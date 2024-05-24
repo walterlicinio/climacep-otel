@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,7 +59,10 @@ type OpenMeteoResponse struct {
 	} `json:"current_weather"`
 }
 
-func getCity(cep string) ViaCepResponse {
+func getCity(ctx context.Context, cep string) ViaCepResponse {
+	_, span := tracer.Start(ctx, "getCity")
+	defer span.End()
+
 	var data ViaCepResponse
 	url := fmt.Sprintf("https://viacep.com.br/ws/%s/json/", cep)
 
@@ -79,7 +83,10 @@ func getCity(cep string) ViaCepResponse {
 	return data
 }
 
-func getCoordinates(location string) (float64, float64, error) {
+func getCoordinates(ctx context.Context, location string) (float64, float64, error) {
+	_, span := tracer.Start(ctx, "getCoordinates")
+	defer span.End()
+
 	url := fmt.Sprintf("https://nominatim.openstreetmap.org/search?format=json&q=%s", url.QueryEscape(location))
 
 	resp, err := http.Get(url)
@@ -104,7 +111,10 @@ func getCoordinates(location string) (float64, float64, error) {
 	return data[0].Lat, data[0].Lon, nil
 }
 
-func getTemperature(latitude, longitude float64) (float64, error) {
+func getTemperature(ctx context.Context, latitude, longitude float64) (float64, error) {
+	_, span := tracer.Start(ctx, "getTemperature")
+	defer span.End()
+
 	url := fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%f&longitude=%f&current_weather=true", latitude, longitude)
 
 	log.Printf("URL Request: %s", url)
@@ -144,6 +154,9 @@ func validateCep(cep string) bool {
 }
 
 func temperatureHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "handle-request")
+	defer span.End()
+
 	var request struct {
 		Cep string `json:"cep"`
 	}
@@ -164,19 +177,19 @@ func temperatureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	city := getCity(request.Cep)
+	city := getCity(ctx, request.Cep)
 	if city.Error {
 		http.Error(w, "can not find zipcode", http.StatusNotFound)
 		return
 	}
 
-	lat, lon, err := getCoordinates(city.Localidade)
+	lat, lon, err := getCoordinates(ctx, city.Localidade)
 	if err != nil {
 		http.Error(w, "can not find zipcode", http.StatusNotFound)
 		return
 	}
 
-	tempC, err := getTemperature(lat, lon)
+	tempC, err := getTemperature(ctx, lat, lon)
 	if err != nil {
 		http.Error(w, "could not get temperature", http.StatusInternalServerError)
 		return

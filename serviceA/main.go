@@ -58,6 +58,9 @@ func validateCep(cep string) bool {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	ctx, span := tracer.Start(r.Context(), "handler")
+	defer span.End()
+
 	var request struct {
 		Cep string `json:"cep"`
 	}
@@ -78,7 +81,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, _ := http.NewRequest("POST", "http://serviceb:8081/cep", strings.NewReader(string(body)))
+	req, _ := http.NewRequestWithContext(ctx, "POST", "http://serviceb:8081/cep", strings.NewReader(string(body)))
 	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 
 	resp, err := client.Do(req)
